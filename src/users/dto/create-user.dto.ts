@@ -1,5 +1,5 @@
 // src/users/dto/create-user.dto.ts
-import { UserRole } from '../users.entity';
+import { UserRole } from '../users.entity'; // users.entity.ts 기준
 
 export class CreateUserDto {
   email!: string;

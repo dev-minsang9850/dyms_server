@@ -14,13 +14,18 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 
+interface RequestUser {
+  id: string;
+  email?: string;
+}
+
 @Controller('chats')
 @UseGuards(JwtAuthGuard)
 export class ChatsController {
   constructor(private readonly chatsService: ChatsService) {}
 
   @Get()
-  getMyChats(@Req() req: any) {
+  getMyChats(@Req() req: { user: RequestUser }) {
     const user = req.user;
     return this.chatsService.findAllForUser(user.id);
   }
@@ -31,10 +36,7 @@ export class ChatsController {
   }
 
   @Get(':id/messages')
-  getMessages(
-    @Param('id') id: string,
-    @Query('limit') limit?: string,
-  ) {
+  getMessages(@Param('id') id: string, @Query('limit') limit?: string) {
     const l = limit ? parseInt(limit, 10) : 50;
     return this.chatsService.findMessages(id, l);
   }
@@ -42,7 +44,7 @@ export class ChatsController {
   @Post(':id/messages')
   sendMessage(
     @Param('id') id: string,
-    @Req() req: any,
+    @Req() req: { user: RequestUser },
     @Body() dto: SendMessageDto,
   ) {
     const user = req.user;

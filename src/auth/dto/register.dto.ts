@@ -6,5 +6,5 @@ export class RegisterDto {
   password!: string;
   name!: string;
   phone!: string;
-  role!: UserRole; // string 말고 UserRole
+  role!: UserRole;
 }

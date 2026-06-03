@@ -26,6 +26,7 @@ export class AuthService {
 
     const user = await this.usersService.create(toCreate);
     const token = this.signToken(user.id, user.email);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _password, ...safeUser } = user;
     return { user: safeUser, accessToken: token };
   }
@@ -39,6 +40,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     const token = this.signToken(user.id, user.email);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _password, ...safeUser } = user;
     return { user: safeUser, accessToken: token };
   }

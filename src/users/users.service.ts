@@ -1,6 +1,6 @@
 // src/users/users.service.ts
-import { Injectable } from '@nestjs/common';
-import { User, UserRole } from './users.entity';
+import { Injectable, ConflictException } from '@nestjs/common';
+import { User } from './users.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 
@@ -9,9 +9,12 @@ export class UsersService {
   private users: User[] = [];
 
   async create(dto: CreateUserDto): Promise<User> {
-    const exists = this.users.find((u) => u.email === dto.email);
+    const exists: User | undefined = this.users.find(
+      (u: User) => u.email === dto.email,
+    );
     if (exists) {
-      throw new Error('User already exists');
+      // 500 대신 409로 내려가도록 Nest 예외 사용
+      throw new ConflictException('User already exists');
     }
 
     const hashed = await bcrypt.hash(dto.password, 10);
@@ -30,11 +33,11 @@ export class UsersService {
     return user;
   }
 
-  async findByEmail(email: string): Promise<User | undefined> {
+  findByEmail(email: string): User | undefined {
     return this.users.find((u) => u.email === email);
   }
 
-  async findById(id: string): Promise<User | undefined> {
+  findById(id: string): User | undefined {
     return this.users.find((u) => u.id === id);
   }
 
@@ -42,7 +45,7 @@ export class UsersService {
     email: string,
     password: string,
   ): Promise<User | null> {
-    const user = await this.findByEmail(email);
+    const user = this.findByEmail(email);
     if (!user) return null;
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return null;

@@ -1,10 +1,10 @@
-// src/users/user.entity.ts
+// src/users/users.entity.ts
 export type UserRole = 'student' | 'teacher';
 
 export class User {
   id!: string;
   email!: string;
-  password!: string; // 해시된 비밀번호
+  password!: string;
   name!: string;
   phone!: string;
   role!: UserRole;

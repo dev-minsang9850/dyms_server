@@ -5,6 +5,7 @@ import { User } from './users.entity';
 
 @Controller('users')
 export class UsersController {
+  // ✅ 이름이 정확히 UsersController
   constructor(private readonly usersService: UsersService) {}
 
   @Get(':id')
@@ -13,8 +14,8 @@ export class UsersController {
     if (!user) {
       throw new Error('User not found');
     }
-    // password 제거
-    const { password, ...safeUser } = user;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _password, ...safeUser } = user;
     return safeUser;
   }
 }
