@@ -1,4 +1,6 @@
 allowBuilds:
+  '@firebase/util': true
   '@nestjs/core': true
-  bcrypt: false
+  bcrypt: true
+  protobufjs: true
   unrs-resolver: true

@@ -7,5 +7,5 @@ export class RegisterDto {
   name!: string;
   phone!: string;
   role!: UserRole;
-  workspace!: WorkspaceName;
+  workspace?: WorkspaceName;
 }

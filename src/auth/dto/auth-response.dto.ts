@@ -7,7 +7,7 @@ export class AuthUserResponseDto {
   email!: string;
   phone!: string;
   role!: UserRole;
-  workspace!: WorkspaceName;
+  workspace?: WorkspaceName;
   isApproved!: boolean;
   isAdmin!: boolean;
   statusMessage?: string;

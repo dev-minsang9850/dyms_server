@@ -18,7 +18,7 @@ export class User {
   name!: string;
   phone!: string;
   role!: UserRole; // ✅ 여기서 UserRole 사용
-  workspace!: WorkspaceName;
+  workspace?: WorkspaceName;
   isApproved!: boolean;
   isAdmin!: boolean;
   statusMessage?: string;
