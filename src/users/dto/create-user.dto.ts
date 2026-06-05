@@ -1,5 +1,5 @@
 // src/users/dto/create-user.dto.ts
-import { UserRole } from '../users.entity'; // users.entity.ts 기준
+import { UserRole, WorkspaceName } from '../users.entity';
 
 export class CreateUserDto {
   email!: string;
@@ -7,4 +7,7 @@ export class CreateUserDto {
   name!: string;
   phone!: string;
   role!: UserRole;
+  workspace!: WorkspaceName;
+  isApproved?: boolean;
+  isAdmin?: boolean;
 }

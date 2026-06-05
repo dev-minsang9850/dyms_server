@@ -1,5 +1,5 @@
 // src/auth/dto/register.dto.ts
-import { UserRole } from '../../users/users.entity';
+import { UserRole, WorkspaceName } from '../../users/users.entity';
 
 export class RegisterDto {
   email!: string;
@@ -7,4 +7,5 @@ export class RegisterDto {
   name!: string;
   phone!: string;
   role!: UserRole;
+  workspace!: WorkspaceName;
 }
