@@ -50,7 +50,7 @@ export class UsersController {
     if (!req.user.isAdmin) {
       throw new ForbiddenException('관리자 권한이 필요합니다.');
     }
-    const approvedUser = await this.usersService.approve(id, workspace);
+    const approvedUser = await this.usersService.approve(id, workspace as WorkspaceName);
     // 지정된 워크스페이스에 유저 이메일을 멤버로 등록
     await this.workspacesService.addUserToWorkspace(approvedUser.email, workspace);
     return approvedUser;
@@ -71,7 +71,7 @@ export class UsersController {
     @Req() req: { user: User },
     @Body('workspace') workspace: string,
   ) {
-    const updatedUser = await this.usersService.updateWorkspace(req.user.id, workspace);
+    const updatedUser = await this.usersService.updateWorkspace(req.user.id, workspace as WorkspaceName);
     // 선택한 워크스페이스의 멤버로 자동 추가
     await this.workspacesService.addUserToWorkspace(updatedUser.email, workspace);
     return updatedUser;
