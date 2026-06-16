@@ -29,14 +29,14 @@ export class ChatsController {
   @Get()
   getMyChats(@Req() req: { user: RequestUser }) {
     const user = req.user;
-    return this.chatsService.findAllForUserAndWorkspace(user.id, user.workspace);
+    return this.chatsService.findAllForUserAndWorkspace(
+      user.id,
+      user.workspace,
+    );
   }
 
   @Post()
-  createChat(
-    @Req() req: { user: RequestUser },
-    @Body() dto: CreateChatDto,
-  ) {
+  createChat(@Req() req: { user: RequestUser }, @Body() dto: CreateChatDto) {
     const memberIds = [...(dto.memberIds || [])];
     if (!memberIds.includes(req.user.id)) {
       memberIds.push(req.user.id);
@@ -120,7 +120,13 @@ export class ChatsController {
     @Body('description') description: string,
     @Body('eventDate') eventDate: string,
   ) {
-    return this.chatsService.createEvent(id, req.user.id, title, description, eventDate);
+    return this.chatsService.createEvent(
+      id,
+      req.user.id,
+      title,
+      description,
+      eventDate,
+    );
   }
 
   // 일정 목록 조회

@@ -219,15 +219,22 @@ export class SchoolService implements OnModuleInit {
       return timetableData;
     } catch (error) {
       this.logger.error('Error fetching timetable from Comcigan API', error);
-      return this.getFallbackTimetable(classVal);
+      return this.getFallbackTimetable(classVal, grade);
     }
   }
 
+  async deleteNotice(id: string): Promise<void> {
+    await this.noticeRepository.delete({ id });
+  }
+
   // 학과별 더미 시간표 정의 (월~수: 6교시, 목~금: 7교시 교내 실제 시간표 패턴 반영)
-  getFallbackTimetable(classVal: number): { [key: string]: string[] } {
+  getFallbackTimetable(classVal: number, grade: number = 2): { [key: string]: string[] } {
+    const appendGrade = (subject: string) => subject === '-' ? '-' : `${subject} (${grade}학년)`;
+
+    let baseTimetable: { [key: string]: string[] };
     if (classVal === 1 || classVal === 2) {
       // 경영회계과
-      return {
+      baseTimetable = {
         '월': ['국어', '수학', '영어', '회계원리', '회계원리', '자율', '-'],
         '화': ['수학', '영어', '체육', '성공적인 직업생활', '성공적인 직업생활', '상업정보', '-'],
         '수': ['음악', '미술', '수학', '과학', '사무관리', '사무관리', '-'],
@@ -236,7 +243,7 @@ export class SchoolService implements OnModuleInit {
       };
     } else if (classVal === 3 || classVal === 4) {
       // 보건간호과
-      return {
+      baseTimetable = {
         '월': ['국어', '수학', '영어', '기초 간호 임상 실무', '기초 간호 임상 실무', '자율', '-'],
         '화': ['수학', '영어', '체육', '보건간호 기초', '보건간호 기초', '공중보건학', '-'],
         '수': ['음악', '미술', '수학', '과학', '간호의 기초', '간호의 기초', '-'],
@@ -245,7 +252,7 @@ export class SchoolService implements OnModuleInit {
       };
     } else {
       // 빅데이터과 및 소프트웨어과 (기본값)
-      return {
+      baseTimetable = {
         '월': ['국어', '수학', '영어', '자료구조', '자료구조', '자율', '-'],
         '화': ['수학', '영어', '체육', 'DB', 'DB', '중국어', '-'],
         '수': ['음악', '미술', '수학', '과학', '네트워크', '네트워크', '-'],
@@ -253,6 +260,12 @@ export class SchoolService implements OnModuleInit {
         '금': ['데이터베이스', '네트워크 기초', '수학', '영어', '자료구조', '웹 프로그래밍', '자율'],
       };
     }
+
+    const modifiedTimetable: { [key: string]: string[] } = {};
+    for (const day in baseTimetable) {
+      modifiedTimetable[day] = baseTimetable[day].map(appendGrade);
+    }
+    return modifiedTimetable;
   }
 
   // 날짜 변환 헬퍼 (yyyyMMdd -> O월 O일 (요일))

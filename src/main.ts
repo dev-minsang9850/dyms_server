@@ -13,6 +13,11 @@ async function bootstrap() {
     credentials: false,
   });
 
+  // Increase payload limit for profile pictures
+  const bodyParser = require('body-parser');
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
   // Ensure uploads directory exists
   const uploadsDir = join(__dirname, '..', 'uploads');
   if (!existsSync(uploadsDir)) {

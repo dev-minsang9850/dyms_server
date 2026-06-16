@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { SchoolService } from './school.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PushService } from '../push/push.service';
@@ -57,6 +57,15 @@ export class SchoolController {
     }
 
     return newNotice;
+  }
+
+  @Delete('notices/:id')
+  async deleteNotice(@Req() req: any, @Param('id') id: string) {
+    const user = req.user;
+    if (user.role !== 'teacher' && !user.isAdmin) {
+      throw new UnauthorizedException('선생님 또는 관리자만 공지사항을 삭제할 수 있습니다.');
+    }
+    return this.schoolService.deleteNotice(id);
   }
 
   @Get('timetable')

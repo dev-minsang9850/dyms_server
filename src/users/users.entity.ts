@@ -60,5 +60,8 @@ export class User {
   position?: UserPosition;
 
   @Column({ nullable: true })
+  profileImage?: string;
+
+  @Column({ nullable: true })
   pushToken?: string;
 }

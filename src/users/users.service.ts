@@ -243,6 +243,7 @@ export class UsersService implements OnModuleInit {
       class?: number;
       number?: number;
       password?: string;
+      profileImage?: string;
     },
   ): Promise<User> {
     const user = await this.findById(id);
@@ -269,6 +270,11 @@ export class UsersService implements OnModuleInit {
         user.phone = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
       }
     }
+    
+    if (data.profileImage !== undefined) {
+      user.profileImage = data.profileImage;
+    }
+
     if (user.role === 'student') {
       if (data.grade !== undefined && data.grade !== null) {
         const g = Number(data.grade);
