@@ -15,8 +15,11 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return server status details', () => {
+      const res = appController.getRoot();
+      expect(res.service).toBe('DYMS Server');
+      expect(res.status).toBe('ok');
+      expect(res.timestamp).toBeDefined();
     });
   });
 });

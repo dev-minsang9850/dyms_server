@@ -2,4 +2,5 @@
 export class CreateChatDto {
   memberIds!: string[];
   name?: string;
+  workspace?: string;
 }

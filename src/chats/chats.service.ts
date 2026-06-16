@@ -1,9 +1,14 @@
-// src/chats/chats.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Chat } from './chat.entity';
 import { Message } from './message.entity';
+import { VoteEntity } from './vote.entity';
+import { ChatEventEntity } from './chatevent.entity';
 import { CreateChatDto } from './dto/create-chat.dto';
-import { FirebaseService } from '../firebase/firebase.service';
+import { UsersService } from '../users/users.service';
+import { SchoolService } from '../school/school.service';
+import { PushService } from '../push/push.service';
 
 const formatTime = () => {
   const now = new Date();
@@ -16,131 +21,306 @@ const formatTime = () => {
 
 @Injectable()
 export class ChatsService {
-  constructor(private readonly firebaseService: FirebaseService) {}
+  constructor(
+    @InjectRepository(Chat)
+    private readonly chatRepository: Repository<Chat>,
+    @InjectRepository(Message)
+    private readonly messageRepository: Repository<Message>,
+    @InjectRepository(VoteEntity)
+    private readonly voteRepository: Repository<VoteEntity>,
+    @InjectRepository(ChatEventEntity)
+    private readonly eventRepository: Repository<ChatEventEntity>,
+    private readonly usersService: UsersService,
+    private readonly schoolService: SchoolService,
+    private readonly pushService: PushService,
+  ) {}
 
-  private getChatsCollection() {
-    return this.firebaseService.db?.collection('chats');
-  }
-
-  private getMessagesCollection(chatId: string) {
-    return this.firebaseService.db?.collection('chats').doc(chatId).collection('messages');
-  }
-
-  async findAllForUser(userId: string): Promise<Chat[]> {
-    if (this.firebaseService.isFallback()) {
-      return this.firebaseService.fallbackDb.chats.filter((c: any) => c.memberIds.includes(userId));
-    }
-
+  async findAllForUserAndWorkspace(userId: string, workspace?: string): Promise<Chat[]> {
     try {
-      const snapshot = await this.getChatsCollection()!
-        .where('memberIds', 'array-contains', userId)
-        .get();
-      return snapshot.docs.map((doc) => doc.data() as Chat);
+      const qb = this.chatRepository.createQueryBuilder('chat');
+      // PostgreSQL array check
+      qb.where(':userId = ANY(chat.memberIds)', { userId });
+      if (workspace) {
+        qb.andWhere('LOWER(chat.workspace) = LOWER(:workspace)', { workspace });
+      }
+      const list = await qb.getMany();
+
+      return list.map((c) => {
+        const unreadCount = c.unreadCounts ? (c.unreadCounts[userId] || 0) : 0;
+        return { ...c, unreadCount };
+      });
     } catch (e) {
-      console.error('Error fetching chats from Firestore', e);
+      console.error('Error fetching chats from PostgreSQL', e);
       return [];
     }
   }
 
-  async findMessages(chatId: string, limit = 50): Promise<Message[]> {
-    if (this.firebaseService.isFallback()) {
-      const list = this.firebaseService.fallbackDb.messages[chatId] || [];
-      return list.slice(-limit);
+  async findMessages(chatId: string, userId: string, limit = 50): Promise<Message[]> {
+    let chatObj = await this.chatRepository.findOne({ where: { id: chatId } });
+
+    // Clear the unread count in parent chat for the reading user
+    if (chatObj) {
+      const unreadCounts = chatObj.unreadCounts || {};
+      unreadCounts[userId] = 0;
+      chatObj.unreadCounts = unreadCounts;
+      try {
+        await this.chatRepository.save(chatObj);
+      } catch (updateErr) {
+        console.error(`Error clearing unread counts for user ${userId} in chat ${chatId}`, updateErr);
+      }
     }
 
     try {
-      // Order messages by sub-document timestamp.
-      // Firestore does not require complex index if we do not filter, but sorting by createdAt needs index.
-      // To prevent index creation errors, we can just load the last messages and sort in memory, or query and sort.
-      // Getting doc snapshots and sorting them in memory by createdAt or id is safer for zero-config startup.
-      const snapshot = await this.getMessagesCollection(chatId)!
-        .limit(limit)
-        .get();
-      const msgs = snapshot.docs.map((doc) => doc.data() as Message);
+      const rawMsgs = await this.messageRepository.find({
+        where: { chatId },
+        order: { id: 'ASC' },
+        take: limit,
+      });
       
-      // Sort in memory by ID or timestamp (system-xxxx or m-xxxx) to ensure correct order
-      return msgs.sort((a, b) => a.id.localeCompare(b.id));
+      // Update read status for the requesting user
+      await Promise.all(rawMsgs.map(async (m) => {
+        const readBy = m.readBy || [m.senderId];
+        if (!readBy.includes(userId)) {
+          readBy.push(userId);
+          m.readBy = readBy;
+          await this.messageRepository.save(m);
+        }
+      }));
+
+      const msgs = rawMsgs.map((m) => {
+        const readBy = m.readBy || [m.senderId];
+        if (!readBy.includes(userId)) {
+          readBy.push(userId);
+        }
+        return { ...m, readBy };
+      });
+
+      // Filter out system messages so they do not show up in the chat logs
+      const nonSystemMsgs = msgs.filter((m) => m.senderId !== 'system' && m.senderId !== 'system-message');
+
+      // Populate senderName, senderRole, and timestamp in memory
+      const populated = await Promise.all(nonSystemMsgs.map(async (m) => {
+        const user = await this.usersService.findById(m.senderId);
+        return {
+          ...m,
+          senderName: user ? user.name : '알수없음',
+          senderRole: user ? user.role : 'student',
+          timestamp: m.createdAt,
+        } as any;
+      }));
+
+      return populated;
     } catch (e) {
-      console.error('Error fetching messages from Firestore', e);
+      console.error('Error fetching messages from PostgreSQL', e);
       return [];
     }
   }
 
   async createChat(dto: CreateChatDto): Promise<Chat> {
     const id = `c-${Date.now()}`;
-    const name = dto.name || (dto.memberIds.length > 1 ? '단체 채팅방' : '1:1 채팅');
+    const type = dto.memberIds.length > 2 ? 'group' : 'direct';
+    const name = dto.name || (type === 'group' ? '단체 채팅방' : '1:1 채팅');
     
+    const unreadCounts: { [userId: string]: number } = {};
+    dto.memberIds.forEach((mId) => {
+      unreadCounts[mId] = 0;
+    });
+
     const chat: Chat = {
       id,
       name,
-      type: dto.memberIds.length > 1 ? 'group' : 'direct',
+      type,
       memberIds: dto.memberIds,
       lastMessage: '채팅방이 개설되었습니다.',
       lastMessageTime: formatTime(),
       unreadCount: 0,
+      unreadCounts,
+      workspace: dto.workspace,
     };
 
-    const sysMsg: Message = {
-      id: `sys-${Date.now()}`,
-      chatId: id,
-      senderId: 'system',
-      content: '대화가 시작되었습니다.',
-      createdAt: formatTime(),
-    };
-
-    if (this.firebaseService.isFallback()) {
-      this.firebaseService.fallbackDb.chats.unshift(chat);
-      if (!this.firebaseService.fallbackDb.messages[id]) {
-        this.firebaseService.fallbackDb.messages[id] = [];
-      }
-      this.firebaseService.fallbackDb.messages[id].push(sysMsg);
-      return chat;
-    }
-
-    await this.getChatsCollection()!.doc(id).set(chat);
-    await this.getMessagesCollection(id)!.doc(sysMsg.id).set(sysMsg);
-
-    return chat;
+    return this.chatRepository.save(chat);
   }
 
-  async sendMessage(chatId: string, senderId: string, content: string): Promise<Message> {
+  async sendMessage(
+    chatId: string, 
+    senderId: string, 
+    content: string, 
+    fileUrl?: string, 
+    fileName?: string, 
+    fileType?: string
+  ): Promise<Message> {
+    const user = await this.usersService.findById(senderId);
     const msg: Message = {
       id: `m-${Date.now()}`,
       chatId,
       senderId,
       content,
       createdAt: formatTime(),
+      readBy: [senderId],
+      fileUrl,
+      fileName,
+      fileType,
     };
 
-    if (this.firebaseService.isFallback()) {
-      if (!this.firebaseService.fallbackDb.messages[chatId]) {
-        this.firebaseService.fallbackDb.messages[chatId] = [];
-      }
-      this.firebaseService.fallbackDb.messages[chatId].push(msg);
+    // Save message
+    await this.messageRepository.save(msg);
 
-      this.firebaseService.fallbackDb.chats = this.firebaseService.fallbackDb.chats.map((c: any) =>
-        c.id === chatId
-          ? {
-              ...c,
-              lastMessage: content,
-              lastMessageTime: msg.createdAt,
-              unreadCount: 0,
-            }
-          : c,
-      );
-      return msg;
+    // Fetch parent chat to update last message & unreadCounts
+    const chatData = await this.chatRepository.findOne({ where: { id: chatId } });
+    if (chatData) {
+      const unreadCounts = chatData.unreadCounts || {};
+      const pushTokens: string[] = [];
+
+      // Collect push tokens for other members
+      await Promise.all(chatData.memberIds.map(async (mId) => {
+        if (mId !== senderId) {
+          unreadCounts[mId] = (unreadCounts[mId] || 0) + 1;
+          const member = await this.usersService.findById(mId);
+          if (member && member.pushToken) {
+            pushTokens.push(member.pushToken);
+          }
+        } else {
+          unreadCounts[mId] = 0;
+        }
+      }));
+
+      chatData.lastMessage = content;
+      chatData.lastMessageTime = msg.createdAt;
+      chatData.unreadCounts = unreadCounts;
+      await this.chatRepository.save(chatData);
+
+      // Send push notification
+      if (pushTokens.length > 0) {
+        let chatName = chatData.name;
+        if (chatData.type === 'direct') {
+          chatName = user?.name || '사용자';
+        }
+
+        const msgBody = fileUrl ? (fileType === 'image' ? '(사진)' : '(파일)') : content;
+        
+        try {
+          await this.pushService.broadcastNotice(
+            pushTokens,
+            chatName,
+            msgBody.length > 30 ? msgBody.substring(0, 30) + '...' : msgBody,
+            { chatId: chatData.id, type: 'chat' }
+          );
+        } catch (e) {
+          console.error('Failed to send push notification', e);
+        }
+      }
     }
 
-    // Write message document
-    await this.getMessagesCollection(chatId)!.doc(msg.id).set(msg);
+    // Trigger check for [공지], [긴급], [행사]
+    try {
+      const sender = await this.usersService.findById(senderId);
+      if (sender && (sender.role === 'teacher' || sender.position === 'head' || sender.position === 'deputy')) {
+        const trimmed = content.trim();
+        const prefixMatch = trimmed.match(/^\[(공지|긴급|행사)\]/);
+        if (prefixMatch) {
+          const tag = prefixMatch[1] as '공지' | '긴급' | '행사';
+          const rawText = trimmed.substring(prefixMatch[0].length).trim();
+          const lines = rawText.split('\n');
+          const title = lines[0] || `${tag}사항 안내`;
+          const bodyContent = lines.slice(1).join('\n') || '';
 
-    // Update last message in parent chat document
-    await this.getChatsCollection()!.doc(chatId).update({
-      lastMessage: content,
-      lastMessageTime: msg.createdAt,
-      unreadCount: 0,
-    });
+          const today = new Date();
+          const yyyy = today.getFullYear();
+          const mm = (today.getMonth() + 1).toString().padStart(2, '0');
+          const dd = today.getDate().toString().padStart(2, '0');
+          const dateStr = `${yyyy}.${mm}.${dd}`;
 
-    return msg;
+          const newNotice = await this.schoolService.createNotice({
+            id: `n-${Date.now()}`,
+            tag,
+            date: dateStr,
+            title,
+            content: bodyContent,
+          });
+
+          // FCM/Expo Push Notification to all users for the new notice
+          const allUsers = await this.usersService.findAll();
+          const noticePushTokens = allUsers.map(u => u.pushToken).filter(t => !!t) as string[];
+          if (noticePushTokens.length > 0) {
+            await this.pushService.broadcastNotice(
+              noticePushTokens,
+              `[새 공지사항] ${newNotice.title}`,
+              newNotice.content.length > 30 ? newNotice.content.substring(0, 30) + '...' : newNotice.content,
+              { noticeId: newNotice.id, type: 'notice' }
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to trigger auto notice registration', err);
+    }
+
+    // Populate sender details for return
+    return {
+      ...msg,
+      senderName: user ? user.name : '알수없음',
+      senderRole: user ? user.role : 'student',
+      timestamp: msg.createdAt,
+    } as any;
+  }
+
+  async createVote(chatId: string, creatorId: string, title: string, options: string[]): Promise<VoteEntity> {
+    const vote: VoteEntity = {
+      id: `v-${Date.now()}`,
+      chatId,
+      title,
+      options,
+      creatorId,
+      createdAt: formatTime(),
+      closed: false,
+      votes: {},
+    };
+
+    return this.voteRepository.save(vote);
+  }
+
+  async getVotes(chatId: string): Promise<VoteEntity[]> {
+    return this.voteRepository.find({ where: { chatId } });
+  }
+
+  async participateVote(voteId: string, userId: string, optionIndex: number): Promise<VoteEntity> {
+    const vote = await this.voteRepository.findOne({ where: { id: voteId } });
+    if (!vote) throw new Error('Vote not found');
+    if (vote.closed) throw new Error('Vote is closed');
+    
+    vote.votes = vote.votes || {};
+    vote.votes[userId] = optionIndex;
+    
+    return this.voteRepository.save(vote);
+  }
+
+  async closeVote(voteId: string, userId: string): Promise<VoteEntity> {
+    const vote = await this.voteRepository.findOne({ where: { id: voteId } });
+    if (!vote) throw new Error('Vote not found');
+
+    const user = await this.usersService.findById(userId);
+    const isAuthorized = vote.creatorId === userId || user?.isAdmin || user?.role === 'teacher';
+    if (!isAuthorized) throw new Error('Unauthorized');
+
+    vote.closed = true;
+    return this.voteRepository.save(vote);
+  }
+
+  async createEvent(chatId: string, creatorId: string, title: string, description: string, eventDate: string): Promise<ChatEventEntity> {
+    const event: ChatEventEntity = {
+      id: `e-${Date.now()}`,
+      chatId,
+      title,
+      description,
+      eventDate,
+      creatorId,
+      createdAt: formatTime(),
+    };
+
+    return this.eventRepository.save(event);
+  }
+
+  async getEvents(chatId: string): Promise<ChatEventEntity[]> {
+    return this.eventRepository.find({ where: { chatId } });
   }
 }

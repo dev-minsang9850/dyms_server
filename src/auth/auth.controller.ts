@@ -17,4 +17,18 @@ export class AuthController {
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
+
+  @Post('find-id')
+  async findId(@Body('name') name: string, @Body('phone') phone: string) {
+    return this.authService.findId(name, phone);
+  }
+
+  @Post('find-password')
+  async findPassword(
+    @Body('email') email: string,
+    @Body('name') name: string,
+    @Body('phone') phone: string,
+  ) {
+    return this.authService.findPassword(email, name, phone);
+  }
 }

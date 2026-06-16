@@ -8,4 +8,7 @@ export class RegisterDto {
   phone!: string;
   role!: UserRole;
   workspace?: WorkspaceName;
+  grade?: number;
+  class?: number;
+  number?: number;
 }

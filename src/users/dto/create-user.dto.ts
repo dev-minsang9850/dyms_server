@@ -10,4 +10,8 @@ export class CreateUserDto {
   workspace?: WorkspaceName;
   isApproved?: boolean;
   isAdmin?: boolean;
+  grade?: number;
+  class?: number;
+  number?: number;
+  position?: 'none' | 'head' | 'deputy';
 }

@@ -11,6 +11,10 @@ export class AuthUserResponseDto {
   isApproved!: boolean;
   isAdmin!: boolean;
   statusMessage?: string;
+  grade?: number;
+  class?: number;
+  number?: number;
+  position?: 'none' | 'head' | 'deputy';
 }
 
 export class LoginResponseDto {

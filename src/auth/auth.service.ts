@@ -30,6 +30,9 @@ export class AuthService {
       workspace: dto.workspace,
       isApproved: false,
       isAdmin: false,
+      grade: dto.grade,
+      class: dto.class,
+      number: dto.number,
     };
 
     const user = await this.usersService.create(toCreate);
@@ -40,10 +43,14 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       role: user.role,
-      workspace: user.workspace,
+      workspace: user.workspace || undefined,
       isApproved: user.isApproved,
       isAdmin: user.isAdmin,
       statusMessage: user.statusMessage,
+      grade: user.grade,
+      class: user.class,
+      number: user.number,
+      position: user.position,
     };
 
     return {
@@ -74,13 +81,27 @@ export class AuthService {
       email: user.email,
       phone: user.phone,
       role: user.role,
-      workspace: user.workspace,
+      workspace: user.workspace || undefined,
       isApproved: user.isApproved,
       isAdmin: user.isAdmin,
       statusMessage: user.statusMessage,
+      grade: user.grade,
+      class: user.class,
+      number: user.number,
+      position: user.position,
     };
 
     return { user: safeUser, accessToken: token };
+  }
+
+  async findId(name: string, phone: string): Promise<{ email: string | null }> {
+    const email = await this.usersService.findIdByNameAndPhone(name, phone);
+    return { email };
+  }
+
+  async findPassword(email: string, name: string, phone: string): Promise<{ tempPassword: string | null }> {
+    const tempPassword = await this.usersService.resetPasswordByEmailNamePhone(email, name, phone);
+    return { tempPassword };
   }
 
   private signToken(userId: string, email: string): string {

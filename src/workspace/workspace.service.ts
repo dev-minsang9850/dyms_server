@@ -1,14 +1,9 @@
 // src/workspace/workspace.service.ts
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { FirebaseService } from '../firebase/firebase.service';
+import { Injectable, OnModuleInit, Logger, ConflictException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { WorkspaceEntity } from './workspace.entity';
 import { User } from '../users/users.entity';
-
-export interface Workspace {
-  id: string;
-  name: string;
-  ownerEmail: string;
-  memberEmails?: string[];
-}
 
 @Injectable()
 export class WorkspacesService implements OnModuleInit {
@@ -21,54 +16,67 @@ export class WorkspacesService implements OnModuleInit {
     'DY@Design',
   ];
 
-  constructor(private readonly firebaseService: FirebaseService) {}
+  constructor(
+    @InjectRepository(WorkspaceEntity)
+    private readonly workspaceRepository: Repository<WorkspaceEntity>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   async onModuleInit() {
-    // Seed default workspaces if they do not exist
+    // Seed default workspaces if the database has 0 workspaces
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+      this.logger.error('ADMIN_EMAIL is not set in environment variables! Workspace seeding and migration skipped.');
+      return;
+    }
     try {
       const list = await this.findAllRaw();
-      for (const wsName of this.defaultWorkspaces) {
-        const exists = list.some((w) => w.name === wsName);
-        if (!exists) {
-          await this.createWorkspaceRaw(wsName, 'admin@dy.hs.kr');
+      if (list.length === 0) {
+        this.logger.log('No workspaces found. Seeding predefined workspaces...');
+        for (const wsName of this.defaultWorkspaces) {
+          await this.createWorkspaceRaw(wsName, adminEmail);
+        }
+        this.logger.log('Predefined workspaces seeded.');
+      } else {
+        this.logger.log('Workspaces already exist in DB. Checking for workspace owner email updates...');
+        for (const ws of list) {
+          // If the owner matches either legacy domain or the default fallback and differs from current configured adminEmail
+          if (
+            (ws.ownerEmail === 'admin@dy.hs.kr' || ws.ownerEmail === 'admin@dyhs.kr') &&
+            ws.ownerEmail !== adminEmail
+          ) {
+            ws.ownerEmail = adminEmail;
+            if (ws.memberEmails) {
+              ws.memberEmails = ws.memberEmails.map((email) =>
+                email === 'admin@dy.hs.kr' || email === 'admin@dyhs.kr' ? adminEmail : email,
+              );
+            }
+            await this.workspaceRepository.save(ws);
+          }
         }
       }
-      this.logger.log('Predefined workspaces verified/seeded.');
     } catch (e) {
       this.logger.error('Failed to seed default workspaces', e);
     }
   }
 
-  private getCollection() {
-    return this.firebaseService.db?.collection('workspaces');
+  private async findAllRaw(): Promise<WorkspaceEntity[]> {
+    return this.workspaceRepository.find();
   }
 
-  private async findAllRaw(): Promise<Workspace[]> {
-    if (this.firebaseService.isFallback()) {
-      return this.firebaseService.fallbackDb.workspaces;
-    }
-    const snapshot = await this.getCollection()!.get();
-    return snapshot.docs.map((doc) => doc.data() as Workspace);
-  }
-
-  private async createWorkspaceRaw(name: string, ownerEmail: string): Promise<Workspace> {
-    const ws: Workspace = {
+  private async createWorkspaceRaw(name: string, ownerEmail: string): Promise<WorkspaceEntity> {
+    const ws: WorkspaceEntity = {
       id: `ws-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       name,
       ownerEmail,
       memberEmails: [ownerEmail],
     };
 
-    if (this.firebaseService.isFallback()) {
-      this.firebaseService.fallbackDb.workspaces.push(ws);
-      return ws;
-    }
-
-    await this.getCollection()!.doc(ws.id).set(ws);
-    return ws;
+    return this.workspaceRepository.save(ws);
   }
 
-  async findForUser(user: User): Promise<Workspace[]> {
+  async findForUser(user: User): Promise<WorkspaceEntity[]> {
     const all = await this.findAllRaw();
     return all.filter((w) => {
       const isOwner = w.ownerEmail === user.email;
@@ -78,8 +86,46 @@ export class WorkspacesService implements OnModuleInit {
     });
   }
 
-  async createWorkspace(name: string, user: User): Promise<Workspace> {
-    return this.createWorkspaceRaw(name, user.email);
+  async createWorkspace(name: string, user: User): Promise<WorkspaceEntity> {
+    const all = await this.findAllRaw();
+    const exists = all.some((w) => w.name.toLowerCase() === name.trim().toLowerCase());
+    if (exists) {
+      throw new ConflictException('이미 존재하는 워크스페이스 이름입니다.');
+    }
+    return this.createWorkspaceRaw(name.trim(), user.email);
+  }
+
+  async findById(id: string): Promise<WorkspaceEntity | undefined> {
+    const ws = await this.workspaceRepository.findOne({ where: { id } });
+    return ws || undefined;
+  }
+
+  async findAll(): Promise<WorkspaceEntity[]> {
+    return this.findAllRaw();
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    const ws = await this.findById(id);
+    if (!ws) return;
+
+    await this.workspaceRepository.delete(id);
+
+    // Clear user's workspace settings
+    await this.userRepository.update({ workspace: ws.name as any }, { workspace: null, position: 'none' });
+  }
+
+  async removeUserFromWorkspace(userEmail: string, workspaceId: string): Promise<void> {
+    const all = await this.findAllRaw();
+    const ws = all.find((w) => w.id === workspaceId);
+    if (!ws) return;
+
+    if (ws.memberEmails) {
+      ws.memberEmails = ws.memberEmails.filter((email) => email !== userEmail);
+      await this.workspaceRepository.save(ws);
+    }
+
+    // Update user's workspace and position
+    await this.userRepository.update({ email: userEmail }, { workspace: null, position: 'none' });
   }
 
   // Add a user to a workspace (e.g. on approval)
@@ -93,11 +139,25 @@ export class WorkspacesService implements OnModuleInit {
     }
     if (!ws.memberEmails.includes(userEmail)) {
       ws.memberEmails.push(userEmail);
+      await this.workspaceRepository.save(ws);
+    }
+  }
 
-      if (!this.firebaseService.isFallback()) {
-        await this.getCollection()!.doc(ws.id).update({
-          memberEmails: ws.memberEmails,
-        });
+  async syncUserWorkspaces(userEmail: string, targetWorkspaces: string[]): Promise<void> {
+    const all = await this.findAllRaw();
+    const normalizedTargets = targetWorkspaces.map((w) => w.toLowerCase());
+
+    for (const ws of all) {
+      const isOwner = ws.ownerEmail === userEmail;
+      if (isOwner) continue; // Owner cannot be removed from their own workspace
+
+      const shouldBeMember = normalizedTargets.includes(ws.name.toLowerCase());
+      const isMember = ws.memberEmails && ws.memberEmails.includes(userEmail);
+
+      if (shouldBeMember && !isMember) {
+        await this.addUserToWorkspace(userEmail, ws.name);
+      } else if (!shouldBeMember && isMember) {
+        await this.removeUserFromWorkspace(userEmail, ws.id);
       }
     }
   }
