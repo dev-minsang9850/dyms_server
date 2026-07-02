@@ -10,6 +10,7 @@ export interface Notice {
   date: string;
   title: string;
   content: string;
+  linkUrl?: string;
 }
 
 export interface Meal {
@@ -61,6 +62,21 @@ export class SchoolService implements OnModuleInit {
       id: notice.id || require('uuid').v4(),
     };
     return this.noticeRepository.save(newNotice);
+  }
+
+  async updateNotice(id: string, updateData: Partial<Omit<Notice, 'id' | 'date'>>): Promise<NoticeEntity> {
+    const notice = await this.noticeRepository.findOne({ where: { id } });
+    if (!notice) {
+      throw new Error('Notice not found');
+    }
+    
+    // Update fields
+    if (updateData.title !== undefined) notice.title = updateData.title;
+    if (updateData.content !== undefined) notice.content = updateData.content;
+    if (updateData.tag !== undefined) notice.tag = updateData.tag;
+    if (updateData.linkUrl !== undefined) notice.linkUrl = updateData.linkUrl;
+
+    return this.noticeRepository.save(notice);
   }
 
   // 나이스 오픈 API 급식 조회

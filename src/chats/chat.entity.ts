@@ -28,6 +28,9 @@ export class Chat {
   @Column('jsonb', { nullable: true })
   unreadCounts?: { [userId: string]: number };
 
+  @Column('jsonb', { nullable: true })
+  customNames?: { [userId: string]: string };
+
   @Column({ nullable: true })
   workspace?: string;
 }

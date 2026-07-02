@@ -1,63 +1,56 @@
-# DYMS Server (Backend)
+# DYMS Backend Server
 
-덕영고등학교 교내 메신저 서비스(DYMS)의 백엔드 서버입니다. NestJS 프레임워크와 PostgreSQL을 사용하여 구축되었습니다.
+이 저장소는 덕영고등학교 메신저(DYMS)의 백엔드(NestJS) 소스 코드를 포함하고 있습니다.
+서버를 처음 클론(Clone)하여 설정하는 개발자를 위한 가이드입니다.
 
-## 기술 스택
-- **Framework**: NestJS (Node.js)
-- **Database**: PostgreSQL (TypeORM)
-- **Authentication**: JWT (JSON Web Tokens)
-- **Push Notifications**: Expo Push API
+## ⚙️ 초기 설정 방법 (Getting Started)
 
-## 사전 준비 (Prerequisites)
-- [Node.js](https://nodejs.org/) (v18 이상 권장)
-- [pnpm](https://pnpm.io/) 패키지 매니저
-- PostgreSQL 데이터베이스 (Supabase 등 활용 가능)
-
-## 환경 변수 설정 (Environment Variables)
-
-프로젝트 루트 디렉토리에 `.env` 파일을 생성하고 아래의 환경 변수들을 설정해야 합니다.
-
-```env
-# Server Configuration
-PORT=3000
-
-# Admin Seed Credentials (초기 관리자 계정 생성용)
-ADMIN_EMAIL=admin@dyhs.kr
-ADMIN_PASSWORD=your_secure_password
-
-# JWT Authentication Secret Key
-JWT_SECRET=your_jwt_secret_key
-
-# Database Configuration (PostgreSQL)
-DB_HOST=your_db_host
-DB_PORT=6543
-DB_USERNAME=your_db_username
-DB_PASSWORD=your_db_password
-DB_DATABASE=postgres
-
-# Supabase (Optional, if using Supabase)
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+### 1. 패키지 설치
+Node.js(v18 이상 권장)가 설치되어 있는지 확인한 후, 다음 명령어를 실행하여 의존성을 설치합니다.
+```bash
+npm install
 ```
 
-## 설치 및 실행 (Installation & Running)
+### 2. 환경 변수 설정 (`.env`)
+저장소를 클론한 후, 프로젝트 루트 디렉토리에 `.env` 파일을 직접 생성해야 합니다.
+미리 만들어진 `.env.example` 파일을 복사하여 사용할 수 있습니다.
 
 ```bash
-# 1. 의존성 설치
-$ pnpm install
+cp .env.example .env
+```
+생성된 `.env` 파일을 열어 `JWT_SECRET`, `DB_PASSWORD`, `ADMIN_PASSWORD` 등 실제 운영(또는 개발) 환경에 맞는 데이터베이스 및 암호화 키 값으로 수정해 주세요.
 
-# 2. 로컬 개발 서버 실행 (Watch mode)
-$ pnpm run start:dev
+### 3. Firebase 서비스 계정 키 설정
+푸시 알림(FCM) 등 Firebase 연동을 위해 서비스 계정 키 파일이 필요합니다.
+보안상 이 파일은 깃허브에 올라가지 않습니다.
+1. `firebase-service-account.example.json` 파일을 복사하여 `firebase-service-account.json` 파일을 만듭니다.
+```bash
+cp firebase-service-account.example.json firebase-service-account.json
+```
+2. 파이어베이스 콘솔(Firebase Console) -> 프로젝트 설정 -> 서비스 계정에서 **'새 비공개 키 생성'**을 눌러 다운로드 받은 `.json` 파일의 내용을 `firebase-service-account.json` 파일에 덮어씁니다.
 
-# 3. 프로덕션 빌드
-$ pnpm run build
+---
 
-# 4. 프로덕션 서버 실행
-$ pnpm run start:prod
+## 🚀 실행 방법
+
+### 로컬 개발 환경 실행
+```bash
+# 개발 모드로 실행 (코드가 변경되면 자동으로 재시작됩니다)
+npm run start:dev
 ```
 
-## 주요 기능
-- **사용자 관리**: 학적 정보(학생/교직원) 기반 사용자 인증 및 관리
-- **실시간 채팅**: WebSocket을 통한 실시간 1:1 및 그룹 채팅 지원
-- **푸시 알림**: Expo Push API를 연동한 모바일 푸시 알림 전송
-- **파일 업로드**: 프로필 사진 및 채팅 이미지 업로드 처리 (최대 10MB)
+### 프로덕션(운영) 환경 빌드 및 실행
+실제 서버에 배포할 때는 빌드 과정을 거친 후 PM2와 같은 프로세스 매니저를 사용하여 무중단 실행하는 것을 권장합니다.
+```bash
+# 1. 빌드
+npm run build
+
+# 2. 실행 (PM2 사용 예시)
+pm2 start dist/main.js --name "dyms-server"
+```
+
+---
+
+## 🔒 보안 주의 사항
+- `.env` 파일과 `firebase-service-account.json` 파일은 절대 깃허브나 외부 저장소에 업로드(Commit)되면 안 됩니다. (현재 `.gitignore`에 등록되어 안전합니다.)
+- 운영 서버에 배포 시, `src/main.ts` 파일의 **CORS (Cross-Origin Resource Sharing)** 설정을 확인하여, 승인되지 않은 외부 도메인의 접근을 차단하세요.

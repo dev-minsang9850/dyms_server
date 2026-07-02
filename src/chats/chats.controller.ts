@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Patch,
+  Delete,
   Query,
   Req,
   UseGuards,
@@ -46,6 +47,23 @@ export class ChatsController {
       memberIds,
       workspace: req.user.workspace,
     });
+  }
+
+  @Patch(':id/name')
+  updateCustomName(
+    @Param('id') id: string,
+    @Req() req: { user: RequestUser },
+    @Body('customName') customName: string,
+  ) {
+    return this.chatsService.updateCustomName(id, req.user.id, customName);
+  }
+
+  @Delete(':id/leave')
+  leaveChat(
+    @Param('id') id: string,
+    @Req() req: { user: RequestUser },
+  ) {
+    return this.chatsService.leaveChat(id, req.user.id);
   }
 
   @Get(':id/messages')
@@ -90,6 +108,18 @@ export class ChatsController {
   @Get(':id/votes')
   getVotes(@Param('id') id: string) {
     return this.chatsService.getVotes(id);
+  }
+
+  // 투표 수정
+  @Patch(':id/votes/:voteId')
+  updateVote(
+    @Param('id') id: string,
+    @Param('voteId') voteId: string,
+    @Req() req: { user: RequestUser },
+    @Body('title') title: string,
+    @Body('options') options: string[],
+  ) {
+    return this.chatsService.updateVote(voteId, req.user.id, title, options);
   }
 
   // 투표 참여

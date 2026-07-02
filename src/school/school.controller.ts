@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Param, Body, Query, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { SchoolService } from './school.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PushService } from '../push/push.service';
@@ -24,7 +24,7 @@ export class SchoolController {
   }
 
   @Post('notices')
-  async createNotice(@Req() req: any, @Body() body: { title: string; content: string; tag: string }) {
+  async createNotice(@Req() req: any, @Body() body: { title: string; content: string; tag: string; linkUrl?: string }) {
     const user = req.user;
     if (!user.isApproved) {
       throw new UnauthorizedException('승인된 사용자만 작성할 수 있습니다.');
@@ -42,6 +42,7 @@ export class SchoolController {
       content: body.content,
       tag: body.tag || '공지',
       date: dateStr,
+      linkUrl: body.linkUrl,
     });
 
     // FCM/Expo Push Notification to all users
@@ -66,6 +67,19 @@ export class SchoolController {
       throw new UnauthorizedException('선생님 또는 관리자만 공지사항을 삭제할 수 있습니다.');
     }
     return this.schoolService.deleteNotice(id);
+  }
+
+  @Patch('notices/:id')
+  async updateNotice(
+    @Req() req: any, 
+    @Param('id') id: string, 
+    @Body() body: { title?: string; content?: string; tag?: string; linkUrl?: string }
+  ) {
+    const user = req.user;
+    if (user.role !== 'teacher' && !user.isAdmin) {
+      throw new UnauthorizedException('선생님 또는 관리자만 공지사항을 수정할 수 있습니다.');
+    }
+    return this.schoolService.updateNotice(id, body);
   }
 
   @Get('timetable')

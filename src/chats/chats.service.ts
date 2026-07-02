@@ -135,10 +135,39 @@ export class ChatsService {
       lastMessageTime: formatTime(),
       unreadCount: 0,
       unreadCounts,
+      customNames: {},
       workspace: dto.workspace,
     };
 
     return this.chatRepository.save(chat);
+  }
+
+  async updateCustomName(chatId: string, userId: string, customName: string): Promise<Chat> {
+    const chat = await this.chatRepository.findOne({ where: { id: chatId } });
+    if (!chat) throw new Error('Chat not found');
+
+    const customNames = chat.customNames || {};
+    customNames[userId] = customName;
+    chat.customNames = customNames;
+
+    return this.chatRepository.save(chat);
+  }
+
+  async leaveChat(chatId: string, userId: string): Promise<void> {
+    const chat = await this.chatRepository.findOne({ where: { id: chatId } });
+    if (!chat) return;
+
+    chat.memberIds = chat.memberIds.filter(id => id !== userId);
+
+    if (chat.memberIds.length === 0) {
+      // Delete messages and chat if no members left
+      await this.messageRepository.delete({ chatId });
+      await this.voteRepository.delete({ chatId });
+      await this.eventRepository.delete({ chatId });
+      await this.chatRepository.delete({ id: chatId });
+    } else {
+      await this.chatRepository.save(chat);
+    }
   }
 
   async sendMessage(
@@ -265,6 +294,19 @@ export class ChatsService {
   }
 
   async createVote(chatId: string, creatorId: string, title: string, options: string[]): Promise<VoteEntity> {
+    const chat = await this.chatRepository.findOne({ where: { id: chatId } });
+    if (!chat) throw new Error('Chat not found');
+
+    const creator = await this.usersService.findById(creatorId);
+    
+    // 권한 체크: 단체 채팅방일 경우 (direct 채팅방은 예외 없이 허용)
+    if (chat.type === 'group') {
+      const isAuthorized = creator?.isAdmin || creator?.role === 'teacher' || creator?.position === 'head' || creator?.position === 'deputy';
+      if (!isAuthorized) {
+        throw new Error('Unauthorized');
+      }
+    }
+
     const vote: VoteEntity = {
       id: `v-${Date.now()}`,
       chatId,
@@ -294,13 +336,38 @@ export class ChatsService {
     return this.voteRepository.save(vote);
   }
 
+  async updateVote(voteId: string, userId: string, title: string, options: string[]): Promise<VoteEntity> {
+    const vote = await this.voteRepository.findOne({ where: { id: voteId } });
+    if (!vote) throw new Error('Vote not found');
+
+    const chat = await this.chatRepository.findOne({ where: { id: vote.chatId } });
+    const user = await this.usersService.findById(userId);
+
+    if (chat?.type === 'group') {
+      const isAuthorized = user?.isAdmin || user?.role === 'teacher' || user?.position === 'head' || user?.position === 'deputy';
+      if (!isAuthorized) throw new Error('Unauthorized');
+    } else {
+      if (vote.creatorId !== userId) throw new Error('Unauthorized');
+    }
+
+    vote.title = title;
+    vote.options = options;
+    return this.voteRepository.save(vote);
+  }
+
   async closeVote(voteId: string, userId: string): Promise<VoteEntity> {
     const vote = await this.voteRepository.findOne({ where: { id: voteId } });
     if (!vote) throw new Error('Vote not found');
 
+    const chat = await this.chatRepository.findOne({ where: { id: vote.chatId } });
     const user = await this.usersService.findById(userId);
-    const isAuthorized = vote.creatorId === userId || user?.isAdmin || user?.role === 'teacher';
-    if (!isAuthorized) throw new Error('Unauthorized');
+
+    if (chat?.type === 'group') {
+      const isAuthorized = user?.isAdmin || user?.role === 'teacher' || user?.position === 'head' || user?.position === 'deputy';
+      if (!isAuthorized) throw new Error('Unauthorized');
+    } else {
+      if (vote.creatorId !== userId) throw new Error('Unauthorized');
+    }
 
     vote.closed = true;
     return this.voteRepository.save(vote);

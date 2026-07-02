@@ -164,7 +164,17 @@ export class UsersController {
     if (!req.user.workspace) {
       return [];
     }
-    return this.usersService.findByWorkspace(req.user.workspace);
+    
+    // Fetch the active workspace for the user
+    const workspaces = await this.workspacesService.findAll();
+    const currentWs = workspaces.find((w) => w.name.toLowerCase() === req.user.workspace!.toLowerCase());
+    
+    if (!currentWs || !currentWs.memberEmails || currentWs.memberEmails.length === 0) {
+      return [];
+    }
+
+    // Return all users who are actually members of this workspace
+    return this.usersService.findByEmails(currentWs.memberEmails);
   }
 
   // 어드민/담당교사/부장용 직책 임명

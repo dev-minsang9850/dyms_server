@@ -1,7 +1,7 @@
 // src/users/users.service.ts
 import { Injectable, ConflictException, NotFoundException, OnModuleInit, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { User, WorkspaceName, UserPosition } from './users.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
@@ -215,6 +215,16 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  async findByEmails(emails: string[]): Promise<User[]> {
+    if (!emails || emails.length === 0) return [];
+    return this.userRepository.find({
+      where: {
+        email: In(emails),
+        isApproved: true,
+      },
+    });
+  }
+
   async updatePosition(id: string, position: UserPosition): Promise<User> {
     const user = await this.findById(id);
     if (!user) {
@@ -316,12 +326,26 @@ export class UsersService implements OnModuleInit {
   }
 
   async findIdByNameAndPhone(name: string, phone: string): Promise<string | null> {
-    const user = await this.userRepository.findOne({ where: { name, phone } });
+    const digits = phone.replace(/\D/g, '');
+    let formattedPhone = digits;
+    if (digits.length === 11) {
+      formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+    } else if (digits.length === 10) {
+      formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    const user = await this.userRepository.findOne({ where: { name, phone: formattedPhone } });
     return user ? user.email : null;
   }
 
   async resetPasswordByEmailNamePhone(email: string, name: string, phone: string): Promise<string | null> {
-    const user = await this.userRepository.findOne({ where: { email, name, phone } });
+    const digits = phone.replace(/\D/g, '');
+    let formattedPhone = digits;
+    if (digits.length === 11) {
+      formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+    } else if (digits.length === 10) {
+      formattedPhone = `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    const user = await this.userRepository.findOne({ where: { email, name, phone: formattedPhone } });
     if (!user) return null;
 
     const tempPassword = Math.random().toString(36).substring(2, 10);

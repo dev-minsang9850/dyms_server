@@ -16,4 +16,7 @@ export class NoticeEntity {
 
   @Column()
   content!: string;
+
+  @Column({ nullable: true })
+  linkUrl?: string;
 }
