@@ -11,6 +11,9 @@ export class UploadController {
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
+      limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB 제한
+      },
       storage: diskStorage({
         destination: './uploads',
         filename: (req, file, callback) => {

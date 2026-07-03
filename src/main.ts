@@ -14,9 +14,9 @@ async function bootstrap() {
   });
 
   // Increase payload limit for profile pictures
-  const bodyParser = require('body-parser');
-  app.use(bodyParser.json({ limit: '10mb' }));
-  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+  const express = require('express');
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // Ensure uploads directory exists
   const uploadsDir = join(__dirname, '..', 'uploads');
