@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   Req,
+  Query,
   UseGuards,
   ForbiddenException,
   NotFoundException,
@@ -158,11 +159,16 @@ export class UsersController {
     return updatedUser;
   }
 
-  // 동일 단체 멤버 조회
+  // 동일 단체 멤버 조회 (페이징 및 검색 지원)
   @Get('workspace-members')
-  async getWorkspaceMembers(@Req() req: { user: User }) {
+  async getWorkspaceMembers(
+    @Req() req: { user: User },
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
     if (!req.user.workspace) {
-      return [];
+      return { data: [], total: 0 };
     }
     
     // Fetch the active workspace for the user
@@ -170,11 +176,19 @@ export class UsersController {
     const currentWs = workspaces.find((w) => w.name.toLowerCase() === req.user.workspace!.toLowerCase());
     
     if (!currentWs || !currentWs.memberEmails || currentWs.memberEmails.length === 0) {
-      return [];
+      return { data: [], total: 0 };
     }
 
-    // Return all users who are actually members of this workspace
-    return this.usersService.findByEmails(currentWs.memberEmails);
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const parsedPage = page ? parseInt(page, 10) : 1;
+
+    // Return paginated users who are actually members of this workspace
+    return this.usersService.findWorkspaceMembers(
+      currentWs.memberEmails,
+      search,
+      parsedLimit,
+      parsedPage,
+    );
   }
 
   // 어드민/담당교사/부장용 직책 임명

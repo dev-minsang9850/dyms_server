@@ -35,7 +35,7 @@ export class ChatsService {
     private readonly pushService: PushService,
   ) {}
 
-  async findAllForUserAndWorkspace(userId: string, workspace?: string): Promise<Chat[]> {
+  async findAllForUserAndWorkspace(userId: string, workspace?: string): Promise<any[]> {
     try {
       const qb = this.chatRepository.createQueryBuilder('chat');
       // PostgreSQL array check
@@ -45,9 +45,23 @@ export class ChatsService {
       }
       const list = await qb.getMany();
 
+      // Collect all unique memberIds from all chats
+      const allMemberIds = new Set<string>();
+      list.forEach(c => c.memberIds?.forEach(id => allMemberIds.add(id)));
+      
+      // Fetch users
+      const users = await this.usersService.findByIds(Array.from(allMemberIds));
+      const userMap = new Map();
+      users.forEach(u => userMap.set(u.id, {
+        id: u.id,
+        name: u.name,
+        profileImage: u.profileImage,
+      }));
+
       return list.map((c) => {
         const unreadCount = c.unreadCounts ? (c.unreadCounts[userId] || 0) : 0;
-        return { ...c, unreadCount };
+        const memberDetails = (c.memberIds || []).map(id => userMap.get(id)).filter(Boolean);
+        return { ...c, unreadCount, memberDetails };
       });
     } catch (e) {
       console.error('Error fetching chats from PostgreSQL', e);
@@ -116,7 +130,7 @@ export class ChatsService {
     }
   }
 
-  async createChat(dto: CreateChatDto): Promise<Chat> {
+  async createChat(dto: CreateChatDto): Promise<any> {
     const id = `c-${Date.now()}`;
     const type = dto.memberIds.length > 2 ? 'group' : 'direct';
     const name = dto.name || (type === 'group' ? '단체 채팅방' : '1:1 채팅');
@@ -139,7 +153,17 @@ export class ChatsService {
       workspace: dto.workspace,
     };
 
-    return this.chatRepository.save(chat);
+    const savedChat = await this.chatRepository.save(chat);
+
+    // Attach member details
+    const users = await this.usersService.findByIds(dto.memberIds);
+    const memberDetails = users.map(u => ({
+      id: u.id,
+      name: u.name,
+      profileImage: u.profileImage,
+    }));
+
+    return { ...savedChat, memberDetails };
   }
 
   async updateCustomName(chatId: string, userId: string, customName: string): Promise<Chat> {

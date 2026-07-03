@@ -70,6 +70,11 @@ export class UsersService implements OnModuleInit {
     return user || undefined;
   }
 
+  async findByIds(ids: string[]): Promise<User[]> {
+    if (!ids || ids.length === 0) return [];
+    return this.userRepository.find({ where: { id: In(ids) } });
+  }
+
   private async createRaw(dto: CreateUserDto & { isApproved: boolean; isAdmin: boolean }): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
     const user: User = {
@@ -223,6 +228,32 @@ export class UsersService implements OnModuleInit {
         isApproved: true,
       },
     });
+  }
+
+  async findWorkspaceMembers(
+    emails: string[],
+    search: string = '',
+    limit: number = 20,
+    page: number = 1,
+  ): Promise<{ data: User[]; total: number }> {
+    if (!emails || emails.length === 0) return { data: [], total: 0 };
+
+    const query = this.userRepository.createQueryBuilder('user')
+      .where('user.email IN (:...emails)', { emails })
+      .andWhere('user.isApproved = :isApproved', { isApproved: true });
+
+    if (search) {
+      // Use ILIKE for case-insensitive search in Postgres
+      query.andWhere('(user.name ILIKE :search OR user.statusMessage ILIKE :search)', { search: `%${search}%` });
+    }
+
+    const [data, total] = await query
+      .orderBy('user.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { data, total };
   }
 
   async updatePosition(id: string, position: UserPosition): Promise<User> {
