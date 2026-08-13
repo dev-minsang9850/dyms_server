@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: dyms-backend
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: dyms-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dyms
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:
