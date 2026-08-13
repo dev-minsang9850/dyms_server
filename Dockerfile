@@ -5,6 +5,9 @@ WORKDIR /app
 # Enable corepack for pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+# Install native build tools for dependencies like bcrypt
+RUN apk add --no-cache python3 make g++
+
 # Copy dependency files
 COPY package.json pnpm-lock.yaml* ./
 
@@ -23,6 +26,9 @@ FROM node:20-alpine
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# Install native build tools for dependencies like bcrypt
+RUN apk add --no-cache python3 make g++
 
 COPY package.json pnpm-lock.yaml* ./
 
