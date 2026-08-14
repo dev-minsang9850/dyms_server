@@ -4,13 +4,19 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Apply Helmet for HTTP Security Headers
+  app.use(helmet({
+    crossOriginResourcePolicy: false, // 필요 시 정적 파일 로딩을 위해 해제
+  }));
+
   app.enableCors({
-    origin: '*', // 개발 단계: 전부 허용
-    credentials: false,
+    origin: ['https://paulee.me', 'https://api.paulee.me', 'http://localhost:3000'],
+    credentials: true,
   });
 
   // Increase payload limit for profile pictures
